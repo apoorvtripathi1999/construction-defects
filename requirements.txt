@@ -4,3 +4,7 @@ scikit-learn
 tensorflow
 fastapi
 pydantic
+streamlit
+requests
+pillow
+uvicorn
