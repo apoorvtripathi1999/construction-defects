@@ -30,12 +30,45 @@ def preprocess_image(image: Image.Image) -> np.ndarray:
     if image.mode != "RGB":
         image = image.convert("RGB")
     
-    # Resize to model input size (adjust if your model uses different size)
-    image = image.resize((224, 224))
-    
-    # Convert to array and normalize
-    img_array = np.array(image) / 255.0
-    img_array = np.expand_dims(img_array, axis=0)
+    # Get the expected input shape from the model
+    # If model expects flattened input, we need to match that
+    if model is not None:
+        input_shape = model.input_shape
+        
+        # Check if model expects flattened input (1D after batch dimension)
+        if len(input_shape) == 2:
+            # Model expects flattened input
+            # Calculate image dimensions from expected input size
+            total_pixels = input_shape[1]
+            # Assuming square image: pixels = height * width * channels
+            # For RGB: total_pixels = h * w * 3
+            img_dim = int(np.sqrt(total_pixels / 3))
+            image = image.resize((img_dim, img_dim))
+            
+            # Convert to array, normalize, and flatten
+            img_array = np.array(image) / 255.0
+            img_array = img_array.flatten()
+            img_array = np.expand_dims(img_array, axis=0)
+        else:
+            # Model expects 2D image input (Conv2D input)
+            # Extract height and width from input shape
+            if input_shape[1] is not None and input_shape[2] is not None:
+                target_height = input_shape[1]
+                target_width = input_shape[2]
+            else:
+                # Default to 224x224 if shape is dynamic
+                target_height, target_width = 224, 224
+            
+            image = image.resize((target_width, target_height))
+            
+            # Convert to array and normalize
+            img_array = np.array(image) / 255.0
+            img_array = np.expand_dims(img_array, axis=0)
+    else:
+        # Fallback if model not loaded
+        image = image.resize((224, 224))
+        img_array = np.array(image) / 255.0
+        img_array = np.expand_dims(img_array, axis=0)
     
     return img_array
 
