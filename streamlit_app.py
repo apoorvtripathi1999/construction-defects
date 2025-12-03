@@ -2,9 +2,11 @@ import streamlit as st
 import requests
 from PIL import Image
 import io
+import os
 
-# API configuration
-API_URL = "http://localhost:8000/predict"
+# API configuration - supports both local and production
+API_BASE_URL = os.getenv("API_URL", "http://localhost:8000")
+API_URL = f"{API_BASE_URL}/predict"
 
 # Page configuration
 st.set_page_config(
@@ -244,7 +246,8 @@ with tab2:
                         files.append(("files", (file.name, file.getvalue(), file.type)))
                     
                     # Make bulk API request
-                    response = requests.post(API_URL.replace("/predict", "/predict/bulk"), files=files, timeout=60)
+                    bulk_url = f"{API_BASE_URL}/predict/bulk"
+                    response = requests.post(bulk_url, files=files, timeout=60)
                     
                     if response.status_code == 200:
                         result = response.json()
