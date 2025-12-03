@@ -7,10 +7,15 @@
 4. [Frontend UI Documentation](#frontend-ui-documentation)
 5. [Model Integration](#model-integration)
 6. [Deployment Details](#deployment-details)
-7. [API Endpoints](#api-endpoints)
-8. [Technology Stack](#technology-stack)
-9. [Usage Guide](#usage-guide)
-10. [Configuration](#configuration)
+7. [Technology Stack](#technology-stack)
+8. [Usage Guide](#usage-guide)
+9. [Configuration](#configuration)
+10. [Key Features Summary](#key-features-summary)
+11. [System Capabilities](#system-capabilities)
+12. [Security Considerations](#security-considerations)
+13. [Known Limitations](#known-limitations)
+14. [Future Enhancements](#future-enhancements)
+15. [Version Information](#version-information)
 
 ---
 
