@@ -5,7 +5,7 @@ import io
 import os
 
 # API configuration - supports both local and production
-API_BASE_URL = os.getenv("API_URL", "http://localhost:8000")
+API_BASE_URL = os.getenv("API_URL", "https://web-production-a1a27.up.railway.app")
 API_URL = f"{API_BASE_URL}/predict"
 
 # Page configuration
