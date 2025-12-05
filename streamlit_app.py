@@ -163,7 +163,9 @@ with tab1:
                             # Defect status
                             has_defect = result.get("has_defect", False)
                             prediction_text = result.get("prediction", "Unknown")
+                            defect_type = result.get("defect_type", "Unknown")
                             confidence = result.get("confidence", 0) * 100
+                            all_probs = result.get("all_probabilities", {})
                             
                             if has_defect:
                                 st.markdown(
@@ -178,7 +180,7 @@ with tab1:
                             
                             # Prediction details
                             st.markdown(
-                                f"<div class='confidence-text'>Result: {prediction_text}</div>",
+                                f"<div class='confidence-text'>Type: {defect_type.replace('_', ' ').title()}</div>",
                                 unsafe_allow_html=True
                             )
                             st.markdown(
@@ -189,6 +191,15 @@ with tab1:
                             # Visual confidence indicator
                             st.markdown("<br>", unsafe_allow_html=True)
                             st.progress(confidence/100, text=f"Model Confidence: {confidence:.2f}%")
+                            
+                            # Show all class probabilities
+                            if all_probs:
+                                st.markdown("<br><div style='color: #a0a0a0;'>All Class Probabilities:</div>", unsafe_allow_html=True)
+                                for class_name, prob in sorted(all_probs.items(), key=lambda x: x[1], reverse=True):
+                                    st.markdown(
+                                        f"<div style='color: #fafafa; font-size: 0.9rem;'>• {class_name.replace('_', ' ').title()}: {prob*100:.1f}%</div>",
+                                        unsafe_allow_html=True
+                                    )
                             
                             st.markdown("</div>", unsafe_allow_html=True)
                         else:
@@ -266,22 +277,23 @@ with tab2:
                                 for idx, item in enumerate(results_data, 1):
                                     image_name = item.get("image_name", "Unknown")
                                     prediction = item.get("prediction", "Unknown")
+                                    defect_type = item.get("defect_type", "Unknown")
+                                    confidence = item.get("confidence", 0) * 100
+                                    has_defect = item.get("has_defect", False)
                                     
                                     # Color code based on prediction
-                                    if "Defect Detected" in prediction:
+                                    if has_defect:
                                         icon = "⚠️"
                                         color = "#ff4b4b"
-                                    elif "No Defect" in prediction:
+                                    else:
                                         icon = "✓"
                                         color = "#00cc66"
-                                    else:
-                                        icon = "❓"
-                                        color = "#ffa500"
                                     
                                     st.markdown(
                                         f"<div style='padding: 0.5rem; margin: 0.3rem 0; background-color: #1e2130; border-left: 3px solid {color};'>"
                                         f"<span style='color: {color};'>{icon}</span> "
-                                        f"<strong>{image_name}</strong>: {prediction}"
+                                        f"<strong>{image_name}</strong>: {defect_type.replace('_', ' ').title()} "
+                                        f"<span style='color: #a0a0a0;'>({confidence:.1f}%)</span>"
                                         f"</div>",
                                         unsafe_allow_html=True
                                     )
@@ -289,8 +301,8 @@ with tab2:
                                 st.markdown("</div>", unsafe_allow_html=True)
                                 
                                 # Summary statistics
-                                defect_count = sum(1 for item in results_data if "Defect Detected" in item.get("prediction", ""))
-                                no_defect_count = sum(1 for item in results_data if "No Defect" in item.get("prediction", ""))
+                                defect_count = sum(1 for item in results_data if item.get("has_defect", False))
+                                no_defect_count = sum(1 for item in results_data if not item.get("has_defect", False))
                                 
                                 col1, col2, col3 = st.columns(3)
                                 with col1:

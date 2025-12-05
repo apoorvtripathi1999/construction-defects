@@ -8,6 +8,7 @@ import io
 import tensorflow as tf
 from tensorflow import keras
 import os
+import json
 
 app = FastAPI(title="Construction Defect Detection API")
 
@@ -23,52 +24,26 @@ app.add_middleware(
 # Global model variable
 model = None
 MODEL_PATH = "model.keras"
+LABEL_MAP_PATH = "label_map.json"
+
+# Class labels mapping (will be loaded from file)
+class_labels = {}
+idx_to_label = {}
 
 def preprocess_image(image: Image.Image) -> np.ndarray:
-    """Preprocess image for model prediction"""
-    # Convert to RGB if necessary
+    """Preprocess image for model prediction - matches training preprocessing exactly"""
+    # Convert to RGB if necessary (same as ImageDataGenerator)
     if image.mode != "RGB":
         image = image.convert("RGB")
     
-    # Get the expected input shape from the model
-    # If model expects flattened input, we need to match that
-    if model is not None:
-        input_shape = model.input_shape
-        
-        # Check if model expects flattened input (1D after batch dimension)
-        if len(input_shape) == 2:
-            # Model expects flattened input
-            # Calculate image dimensions from expected input size
-            total_pixels = input_shape[1]
-            # Assuming square image: pixels = height * width * channels
-            # For RGB: total_pixels = h * w * 3
-            img_dim = int(np.sqrt(total_pixels / 3))
-            image = image.resize((img_dim, img_dim))
-            
-            # Convert to array, normalize, and flatten
-            img_array = np.array(image) / 255.0
-            img_array = img_array.flatten()
-            img_array = np.expand_dims(img_array, axis=0)
-        else:
-            # Model expects 2D image input (Conv2D input)
-            # Extract height and width from input shape
-            if input_shape[1] is not None and input_shape[2] is not None:
-                target_height = input_shape[1]
-                target_width = input_shape[2]
-            else:
-                # Default to 224x224 if shape is dynamic
-                target_height, target_width = 224, 224
-            
-            image = image.resize((target_width, target_height))
-            
-            # Convert to array and normalize
-            img_array = np.array(image) / 255.0
-            img_array = np.expand_dims(img_array, axis=0)
-    else:
-        # Fallback if model not loaded
-        image = image.resize((224, 224))
-        img_array = np.array(image) / 255.0
-        img_array = np.expand_dims(img_array, axis=0)
+    # Resize to 128x128 (same as IMAGE_SIZE in notebook)
+    image = image.resize((128, 128))
+    
+    # Convert to array and normalize to [0, 1] (same as rescale=1./255)
+    img_array = np.array(image, dtype=np.float32) / 255.0
+    
+    # Add batch dimension
+    img_array = np.expand_dims(img_array, axis=0)
     
     return img_array
 
@@ -77,32 +52,65 @@ def predict_defect(img_array: np.ndarray) -> dict:
     if model is None:
         raise Exception("Model not loaded")
     
-    # Get prediction
+    # Log input shape for debugging
+    print(f"Input array shape: {img_array.shape}, range: [{img_array.min():.3f}, {img_array.max():.3f}]")
+    
+    # Get prediction - returns probabilities for all 7 classes
     prediction = model.predict(img_array, verbose=0)
     
-    # Assuming binary classification: 0 = No Defect, 1 = Defect
-    # Adjust based on your model's output
-    has_defect = bool(prediction[0][0] > 0.5)
-    confidence = float(prediction[0][0])
+    # Log raw predictions
+    print(f"Raw predictions: {prediction[0]}")
+    print(f"Sum of probabilities: {prediction[0].sum():.4f}")
+    
+    # Get the class with highest probability
+    predicted_class_idx = int(np.argmax(prediction[0]))
+    confidence = float(np.max(prediction[0]))
+    
+    # Map index to class name
+    predicted_class = idx_to_label.get(predicted_class_idx, "Unknown")
+    
+    print(f"Predicted: {predicted_class} (index {predicted_class_idx}) with confidence {confidence:.4f}")
+    
+    # Determine if it's a defect (anything except 'normal')
+    has_defect = (predicted_class.lower() != "normal")
     
     return {
         "has_defect": has_defect,
+        "defect_type": predicted_class,
         "confidence": confidence,
-        "prediction": "Defect Detected" if has_defect else "No Defect"
+        "prediction": f"{predicted_class.replace('_', ' ').title()}" + (" (Defect Detected)" if has_defect else " (No Defect)"),
+        "all_probabilities": {
+            idx_to_label[i]: float(prediction[0][i]) for i in range(len(prediction[0]))
+        }
     }
 
 @app.on_event("startup")
 async def load_model():
-    """Load the model on startup"""
-    global model
+    """Load the model and label mapping on startup"""
+    global model, class_labels, idx_to_label
     try:
+        # Load model
         if os.path.exists(MODEL_PATH):
             model = keras.models.load_model(MODEL_PATH)
             print(f"✓ Model loaded successfully from {MODEL_PATH}")
         else:
             print(f"⚠ Warning: Model file not found at {MODEL_PATH}")
+        
+        # Load label mapping
+        if os.path.exists(LABEL_MAP_PATH):
+            with open(LABEL_MAP_PATH, 'r') as f:
+                class_labels = json.load(f)
+                # Create reverse mapping: index -> label
+                idx_to_label = {v: k for k, v in class_labels.items()}
+                print(f"✓ Label mapping loaded: {class_labels}")
+        else:
+            print(f"⚠ Warning: Label map not found at {LABEL_MAP_PATH}")
+            # Fallback labels
+            idx_to_label = {0: "algae", 1: "major_crack", 2: "minor_crack", 
+                          3: "normal", 4: "peeling", 5: "spalling", 6: "stain"}
+            
     except Exception as e:
-        print(f"✗ Error loading model: {str(e)}")
+        print(f"✗ Error loading model/labels: {str(e)}")
 
 @app.get("/")
 def root():
@@ -122,7 +130,8 @@ def health_check():
     return {
         "status": "healthy",
         "model_loaded": model is not None,
-        "model_path": MODEL_PATH
+        "model_path": MODEL_PATH,
+        "classes": list(class_labels.keys()) if class_labels else []
     }
 
 @app.post("/predict")
@@ -144,7 +153,9 @@ async def predict_single(file: UploadFile = File(...)):
             "success": True,
             "prediction": result["prediction"],
             "has_defect": result["has_defect"],
-            "confidence": result["confidence"]
+            "defect_type": result["defect_type"],
+            "confidence": result["confidence"],
+            "all_probabilities": result["all_probabilities"]
         }
         
     except Exception as e:
@@ -177,7 +188,10 @@ async def predict_bulk(files: List[UploadFile] = File(...)):
                 
                 results.append({
                     "image_name": file.filename,
-                    "prediction": prediction_result["prediction"]
+                    "prediction": prediction_result["prediction"],
+                    "defect_type": prediction_result["defect_type"],
+                    "confidence": prediction_result["confidence"],
+                    "has_defect": prediction_result["has_defect"]
                 })
                 
             except Exception as e:
